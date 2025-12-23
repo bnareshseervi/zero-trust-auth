@@ -13,6 +13,49 @@ class RiskCalculator:
     }
     
     @staticmethod
+    def calculate_risk_with_ml(current_behavior, baseline, recent_behaviors, ml_score):
+        """
+        Enhanced risk calculation including ML anomaly score
+        
+        Args:
+            current_behavior: Current behavior dict
+            baseline: Baseline dict
+            recent_behaviors: List of recent behaviors
+            ml_score: ML anomaly score (0-100)
+        
+        Returns:
+            Enhanced risk result dict
+        """
+        # Get base risk calculation
+        base_risk = RiskCalculator.calculate_risk(
+            current_behavior, baseline, recent_behaviors
+        )
+        
+        # Integrate ML score (30% weight)
+        ml_weight = 0.30
+        base_weight = 0.70
+        
+        # Combined risk score
+        combined_score = (base_risk['risk_score'] * base_weight) + (ml_score * ml_weight)
+        
+        # Update risk level and action based on combined score
+        combined_level = RiskCalculator.get_risk_level(combined_score)
+        combined_action = RiskCalculator.get_action(combined_score)
+        
+        return {
+            'risk_score': round(combined_score, 2),
+            'risk_level': combined_level,
+            'action_taken': combined_action,
+            'typing_deviation': base_risk['typing_deviation'],
+            'location_deviation': base_risk['location_deviation'],
+            'time_deviation': base_risk['time_deviation'],
+            'device_deviation': base_risk['device_deviation'],
+            'ml_anomaly_score': round(ml_score, 2),
+            'base_risk_score': base_risk['risk_score'],
+            'ml_contribution': round(ml_score * ml_weight, 2)
+        }
+    
+    @staticmethod
     def calculate_distance(lat1, lon1, lat2, lon2):
         """Calculate distance between two GPS coordinates (Haversine formula)"""
         if not all([lat1, lon1, lat2, lon2]):
@@ -224,5 +267,5 @@ class RiskCalculator:
             'location_deviation': round(deviations['location'], 2),
             'time_deviation': round(deviations['time'], 2),
             'device_deviation': round(deviations['device'], 2),
-            'ml_anomaly_score': 0  # Will be updated in Day 3
+            'ml_anomaly_score': 0  # Will be updated when ML is used
         }

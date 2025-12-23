@@ -9,6 +9,10 @@ import json
 from models import Database, User, Behavior, BehaviorBaseline, RiskScore
 from risk_calculator import RiskCalculator
 
+from models import Database, User, Behavior, BehaviorBaseline, RiskScore, MLModel
+from risk_calculator import RiskCalculator
+from ml_engine import MLEngine
+
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -38,11 +42,13 @@ except Exception as e:
 
 @app.route('/api/setup', methods=['POST'])
 def setup_database():
+    """Initialize database tables (run once)"""
     try:
         User.create_table(db)
         Behavior.create_table(db)
         BehaviorBaseline.create_table(db)
         RiskScore.create_table(db)
+        MLModel.create_table(db)  # NEW!
         return jsonify({
             "success": True,
             "message": "All database tables created successfully!"
@@ -460,7 +466,7 @@ def recalculate_baseline():
 @app.route('/api/risk/calculate', methods=['POST'])
 @jwt_required()
 def calculate_risk():
-    """Calculate risk score for current behavior"""
+    """Calculate risk score with ML enhancement"""
     try:
         current_user_id = get_jwt_identity()
         data = request.get_json()
@@ -485,24 +491,57 @@ def calculate_risk():
                 "risk_level": "UNKNOWN"
             }), 200
         
-        # Get recent behaviors for device checking
+        # Get recent behaviors
         recent_behaviors = Behavior.get_user_behaviors(db, current_user_id, limit=20)
         
-        # Calculate risk
-        risk_result = RiskCalculator.calculate_risk(
-            data,
-            baseline,
-            recent_behaviors
-        )
+        # Check if ML model is trained
+        ml_trained = MLModel.is_trained(db, current_user_id)
+        
+        if ml_trained:
+            # Use ML-enhanced risk calculation
+            ml_engine = MLEngine(current_user_id)
+            ml_prediction = ml_engine.predict(data, recent_behaviors)
+            
+            if ml_prediction['success']:
+                ml_score = ml_prediction['anomaly_score']
+                
+                # Calculate risk with ML
+                risk_result = RiskCalculator.calculate_risk_with_ml(
+                    data, baseline, recent_behaviors, ml_score
+                )
+            else:
+                # Fallback to base calculation
+                risk_result = RiskCalculator.calculate_risk(data, baseline, recent_behaviors)
+                risk_result['ml_anomaly_score'] = 0
+        else:
+            # Use base risk calculation
+            risk_result = RiskCalculator.calculate_risk(data, baseline, recent_behaviors)
+            risk_result['ml_anomaly_score'] = 0
         
         # Log the risk score
         RiskScore.create(db, current_user_id, risk_result)
         
-        # Also log the behavior
+        # Log the behavior
         Behavior.create(db, current_user_id, data)
         
-        # Update baseline every 10 behaviors
+        # Check if we should auto-train/retrain
         behavior_count = Behavior.count_user_behaviors(db, current_user_id)
+        
+        # Auto-train after 10 behaviors if not trained
+        if behavior_count == 10 and not ml_trained:
+            ml_engine = MLEngine(current_user_id)
+            training_result = ml_engine.train(recent_behaviors + [data])
+            if training_result['success']:
+                MLModel.update_training_status(db, current_user_id, training_result)
+        
+        # Auto-retrain every 20 behaviors
+        elif ml_trained and behavior_count % 20 == 0:
+            ml_engine = MLEngine(current_user_id)
+            training_result = ml_engine.train(Behavior.get_user_behaviors(db, current_user_id, limit=100))
+            if training_result['success']:
+                MLModel.update_training_status(db, current_user_id, training_result)
+        
+        # Update baseline every 10 behaviors
         if behavior_count % 10 == 0:
             BehaviorBaseline.calculate_and_save(db, current_user_id)
         
@@ -511,11 +550,13 @@ def calculate_risk():
             "risk_score": risk_result['risk_score'],
             "risk_level": risk_result['risk_level'],
             "action": risk_result['action_taken'],
+            "ml_enabled": ml_trained,
             "deviations": {
                 'typing': risk_result['typing_deviation'],
                 'location': risk_result['location_deviation'],
                 'time': risk_result['time_deviation'],
-                'device': risk_result['device_deviation']
+                'device': risk_result['device_deviation'],
+                'ml_anomaly': risk_result['ml_anomaly_score']
             }
         }), 200
         
@@ -600,7 +641,7 @@ def get_risk_history():
 @app.route('/api/dashboard', methods=['GET'])
 @jwt_required()
 def get_dashboard():
-    """Get complete dashboard data"""
+    """Get complete dashboard data with ML status"""
     try:
         current_user_id = get_jwt_identity()
         
@@ -619,6 +660,10 @@ def get_dashboard():
         # Get recent risk history
         risk_history = RiskScore.get_history(db, current_user_id, limit=10)
         
+        # Get ML status
+        ml_status = MLModel.get_status(db, current_user_id)
+        ml_trained = ml_status['is_trained'] if ml_status else False
+        
         dashboard_data = {
             'user': {
                 'email': user['email'],
@@ -627,6 +672,7 @@ def get_dashboard():
             'current_risk': {
                 'score': latest_risk['risk_score'] if latest_risk else 0,
                 'level': latest_risk['risk_level'] if latest_risk else 'UNKNOWN',
+                'ml_score': latest_risk['ml_anomaly_score'] if latest_risk else 0,
                 'last_updated': str(latest_risk['timestamp']) if latest_risk else None
             },
             'baseline_status': {
@@ -634,10 +680,17 @@ def get_dashboard():
                 'total_sessions': baseline['total_sessions'] if baseline else 0,
                 'last_updated': str(baseline['updated_at']) if baseline else None
             },
+            'ml_status': {
+                'trained': ml_trained,
+                'training_samples': ml_status['training_samples'] if ml_status else 0,
+                'last_trained': str(ml_status['last_trained']) if ml_status and ml_status.get('last_trained') else None,
+                'ready_to_train': behavior_count >= 10 and not ml_trained
+            },
             'statistics': {
                 'total_behaviors': behavior_count,
                 'total_risk_checks': len(risk_history),
-                'avg_risk_score': round(sum(r['risk_score'] for r in risk_history) / len(risk_history), 2) if risk_history else 0
+                'avg_risk_score': round(sum(r['risk_score'] for r in risk_history) / len(risk_history), 2) if risk_history else 0,
+                'behaviors_until_ml': max(0, 10 - behavior_count) if not ml_trained else 0
             }
         }
         
@@ -652,6 +705,172 @@ def get_dashboard():
             "error": str(e)
         }), 500
     
+# ============================================
+# MACHINE LEARNING ROUTES
+# ============================================
+
+@app.route('/api/ml/train', methods=['POST'])
+@jwt_required()
+def train_ml_model():
+    """Train ML model for current user"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Get user's behavior history
+        behaviors = Behavior.get_user_behaviors(db, current_user_id, limit=100)
+        
+        if len(behaviors) < 10:
+            return jsonify({
+                "success": False,
+                "error": f"Need at least 10 behaviors to train. You have {len(behaviors)}.",
+                "current_behaviors": len(behaviors)
+            }), 400
+        
+        # Initialize ML engine
+        ml_engine = MLEngine(current_user_id)
+        
+        # Train the model
+        training_result = ml_engine.train(behaviors)
+        
+        if not training_result['success']:
+            return jsonify(training_result), 400
+        
+        # Update database with training status
+        MLModel.update_training_status(db, current_user_id, training_result)
+        
+        return jsonify({
+            "success": True,
+            "message": "ML model trained successfully!",
+            "details": training_result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/ml/status', methods=['GET'])
+@jwt_required()
+def get_ml_status():
+    """Get ML model training status"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Get status from database
+        ml_status = MLModel.get_status(db, current_user_id)
+        
+        # Get model info
+        ml_engine = MLEngine(current_user_id)
+        model_info = ml_engine.get_model_info()
+        
+        # Get behavior count
+        behavior_count = Behavior.count_user_behaviors(db, current_user_id)
+        
+        if not ml_status:
+            return jsonify({
+                "success": True,
+                "trained": False,
+                "message": "No model trained yet",
+                "current_behaviors": behavior_count,
+                "behaviors_needed": max(0, 10 - behavior_count)
+            }), 200
+        
+        return jsonify({
+            "success": True,
+            "trained": ml_status['is_trained'],
+            "training_samples": ml_status['training_samples'],
+            "features_count": ml_status['features_count'],
+            "last_trained": str(ml_status['last_trained']) if ml_status.get('last_trained') else None,
+            "current_behaviors": behavior_count,
+            "model_info": model_info
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/ml/predict', methods=['POST'])
+@jwt_required()
+def ml_predict():
+    """Get ML prediction for behavior"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Behavior data is required"
+            }), 400
+        
+        # Check if model is trained
+        if not MLModel.is_trained(db, current_user_id):
+            return jsonify({
+                "success": False,
+                "error": "ML model not trained yet. Train first with /api/ml/train"
+            }), 400
+        
+        # Get recent behaviors for context
+        recent_behaviors = Behavior.get_user_behaviors(db, current_user_id, limit=20)
+        
+        # Initialize ML engine and predict
+        ml_engine = MLEngine(current_user_id)
+        prediction = ml_engine.predict(data, recent_behaviors)
+        
+        if not prediction['success']:
+            return jsonify(prediction), 400
+        
+        return jsonify({
+            "success": True,
+            "prediction": prediction
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/ml/retrain', methods=['POST'])
+@jwt_required()
+def retrain_ml_model():
+    """Force retrain ML model"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Get latest behaviors
+        behaviors = Behavior.get_user_behaviors(db, current_user_id, limit=100)
+        
+        if len(behaviors) < 10:
+            return jsonify({
+                "success": False,
+                "error": "Need at least 10 behaviors to retrain"
+            }), 400
+        
+        # Train
+        ml_engine = MLEngine(current_user_id)
+        training_result = ml_engine.train(behaviors)
+        
+        if training_result['success']:
+            MLModel.update_training_status(db, current_user_id, training_result)
+        
+        return jsonify({
+            "success": training_result['success'],
+            "message": "Model retrained successfully" if training_result['success'] else "Retraining failed",
+            "details": training_result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # ============================================
 # ERROR HANDLERS
@@ -678,28 +897,28 @@ def internal_error(e):
 # ============================================
 
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("🚀 ZERO TRUST AUTH API v2.0 STARTING...")
-    print("="*60)
+    print("\n" + "="*65)
+    print("🚀 ZERO TRUST AUTH API v3.0 - ML POWERED!")
+    print("="*65)
     print("\n📋 Authentication Endpoints:")
-    print("  POST   /api/setup                    - Setup database")
     print("  POST   /api/auth/register            - Register user")
     print("  POST   /api/auth/login               - Login user")
     print("  GET    /api/auth/profile             - Get profile")
-    print("  POST   /api/auth/logout              - Logout user")
-    print("\n🎯 Behavior Tracking Endpoints:")
+    print("\n🎯 Behavior Tracking:")
     print("  POST   /api/behavior/log             - Log behavior")
-    print("  GET    /api/behavior/history         - Get behavior history")
+    print("  GET    /api/behavior/history         - Get history")
     print("  GET    /api/behavior/baseline        - Get baseline")
-    print("  POST   /api/behavior/baseline/recalculate - Recalculate baseline")
-    print("\n📊 Risk Scoring Endpoints:")
-    print("  POST   /api/risk/calculate           - Calculate risk score")
+    print("\n📊 Risk Scoring (ML-Enhanced):")
+    print("  POST   /api/risk/calculate           - Calculate risk (ML-powered)")
     print("  GET    /api/risk/current             - Get current risk")
     print("  GET    /api/risk/history             - Get risk history")
-    print("  GET    /api/dashboard                - Get dashboard data")
-    print("\n💚 Health Endpoints:")
-    print("  GET    /                             - Health check")
-    print("  GET    /api/health                   - Detailed health")
-    print("\n" + "="*60 + "\n")
+    print("\n🤖 Machine Learning:")
+    print("  POST   /api/ml/train                 - Train ML model")
+    print("  GET    /api/ml/status                - Get ML status")
+    print("  POST   /api/ml/predict               - Get ML prediction")
+    print("  POST   /api/ml/retrain               - Retrain model")
+    print("\n📈 Dashboard:")
+    print("  GET    /api/dashboard                - Complete dashboard")
+    print("\n" + "="*65 + "\n")
     
     app.run(debug=True, host='0.0.0.0', port=5000)

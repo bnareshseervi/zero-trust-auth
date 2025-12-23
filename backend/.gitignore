@@ -19,3 +19,8 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# ML Models
+ml_models/*.pkl
+ml_models/*.joblib
+!ml_models/__init__.py

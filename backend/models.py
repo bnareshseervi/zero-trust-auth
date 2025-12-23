@@ -358,3 +358,63 @@ class RiskScore:
         LIMIT %s;
         """
         return db.execute(query, (user_id, limit), fetch=True)
+    
+    # ADD to models.py
+
+class MLModel:
+    """ML Model training tracking"""
+    
+    @staticmethod
+    def create_table(db):
+        """Create ml_models table"""
+        query = """
+        CREATE TABLE IF NOT EXISTS ml_models (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            is_trained BOOLEAN DEFAULT FALSE,
+            training_samples INTEGER,
+            features_count INTEGER,
+            last_trained TIMESTAMP,
+            model_accuracy FLOAT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_ml_models_user_id ON ml_models(user_id);
+        """
+        db.execute(query)
+        print("✅ ML Models table created!")
+    
+    @staticmethod
+    def update_training_status(db, user_id, training_result):
+        """Update ML model training status"""
+        query = """
+        INSERT INTO ml_models (
+            user_id, is_trained, training_samples, features_count, last_trained
+        ) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET
+            is_trained = EXCLUDED.is_trained,
+            training_samples = EXCLUDED.training_samples,
+            features_count = EXCLUDED.features_count,
+            last_trained = CURRENT_TIMESTAMP
+        RETURNING *;
+        """
+        result = db.execute(query, (
+            user_id,
+            training_result.get('success', False),
+            training_result.get('training_samples', 0),
+            training_result.get('features_used', 0)
+        ), fetch=True)
+        return result[0] if result else None
+    
+    @staticmethod
+    def get_status(db, user_id):
+        """Get ML model training status"""
+        query = "SELECT * FROM ml_models WHERE user_id = %s;"
+        result = db.execute(query, (user_id,), fetch=True)
+        return result[0] if result else None
+    
+    @staticmethod
+    def is_trained(db, user_id):
+        """Check if user has trained model"""
+        status = MLModel.get_status(db, user_id)
+        return status['is_trained'] if status else False
