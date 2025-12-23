@@ -6,6 +6,9 @@ from models import Database, User
 import redis
 import json
 
+from models import Database, User, Behavior, BehaviorBaseline, RiskScore
+from risk_calculator import RiskCalculator
+
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -35,12 +38,14 @@ except Exception as e:
 
 @app.route('/api/setup', methods=['POST'])
 def setup_database():
-    """Initialize database tables (run once)"""
     try:
         User.create_table(db)
+        Behavior.create_table(db)
+        BehaviorBaseline.create_table(db)
+        RiskScore.create_table(db)
         return jsonify({
             "success": True,
-            "message": "Database tables created successfully!"
+            "message": "All database tables created successfully!"
         }), 201
     except Exception as e:
         return jsonify({
@@ -279,6 +284,374 @@ def detailed_health():
         "health": health_status
     }), 200
 
+# ============================================
+# BEHAVIOR TRACKING ROUTES
+# ============================================
+
+@app.route('/api/behavior/log', methods=['POST'])
+@jwt_required()
+def log_behavior():
+    """Log user behavior data"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Behavior data is required"
+            }), 400
+        
+        # Validate required fields
+        required_fields = ['typing_speed', 'session_hour']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "success": False,
+                    "error": f"Missing required field: {field}"
+                }), 400
+        
+        # Log behavior
+        behavior = Behavior.create(db, current_user_id, data)
+        
+        if not behavior:
+            return jsonify({
+                "success": False,
+                "error": "Failed to log behavior"
+            }), 500
+        
+        # Check if we have enough data to calculate baseline
+        behavior_count = Behavior.count_user_behaviors(db, current_user_id)
+        
+        # Auto-calculate baseline after 5 behaviors
+        baseline_updated = False
+        if behavior_count >= 5:
+            baseline = BehaviorBaseline.calculate_and_save(db, current_user_id)
+            baseline_updated = baseline is not None
+        
+        return jsonify({
+            "success": True,
+            "message": "Behavior logged successfully",
+            "behavior_id": behavior['id'],
+            "total_behaviors": behavior_count,
+            "baseline_updated": baseline_updated
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/behavior/history', methods=['GET'])
+@jwt_required()
+def get_behavior_history():
+    """Get user's behavior history"""
+    try:
+        current_user_id = get_jwt_identity()
+        limit = request.args.get('limit', 20, type=int)
+        
+        behaviors = Behavior.get_user_behaviors(db, current_user_id, limit)
+        
+        # Convert to JSON-friendly format
+        behavior_list = []
+        for b in behaviors:
+            behavior_list.append({
+                'id': b['id'],
+                'typing_speed': b['typing_speed'],
+                'location': {
+                    'lat': b['location_lat'],
+                    'lng': b['location_lng']
+                },
+                'device': {
+                    'model': b['device_model'],
+                    'os': b['device_os']
+                },
+                'session_hour': b['session_hour'],
+                'timestamp': str(b['timestamp'])
+            })
+        
+        return jsonify({
+            "success": True,
+            "behaviors": behavior_list,
+            "count": len(behavior_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/behavior/baseline', methods=['GET'])
+@jwt_required()
+def get_baseline():
+    """Get user's behavior baseline"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        baseline = BehaviorBaseline.get_by_user_id(db, current_user_id)
+        
+        if not baseline:
+            return jsonify({
+                "success": False,
+                "message": "No baseline calculated yet. Need at least 5 behavior logs.",
+                "baseline": None
+            }), 404
+        
+        return jsonify({
+            "success": True,
+            "baseline": {
+                'avg_typing_speed': baseline['avg_typing_speed'],
+                'std_typing_speed': baseline['std_typing_speed'],
+                'common_location': {
+                    'lat': baseline['common_location_lat'],
+                    'lng': baseline['common_location_lng']
+                },
+                'common_session_hour': baseline['common_session_hour'],
+                'total_sessions': baseline['total_sessions'],
+                'updated_at': str(baseline['updated_at'])
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/behavior/baseline/recalculate', methods=['POST'])
+@jwt_required()
+def recalculate_baseline():
+    """Manually trigger baseline recalculation"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        baseline = BehaviorBaseline.calculate_and_save(db, current_user_id)
+        
+        if not baseline:
+            return jsonify({
+                "success": False,
+                "error": "Need at least 5 behavior logs to calculate baseline"
+            }), 400
+        
+        return jsonify({
+            "success": True,
+            "message": "Baseline recalculated successfully",
+            "baseline": {
+                'avg_typing_speed': baseline['avg_typing_speed'],
+                'total_sessions': baseline['total_sessions']
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+# ============================================
+# RISK SCORING ROUTES
+# ============================================
+
+@app.route('/api/risk/calculate', methods=['POST'])
+@jwt_required()
+def calculate_risk():
+    """Calculate risk score for current behavior"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Behavior data is required"
+            }), 400
+        
+        # Get user's baseline
+        baseline = BehaviorBaseline.get_by_user_id(db, current_user_id)
+        
+        if not baseline:
+            # First log the behavior
+            Behavior.create(db, current_user_id, data)
+            
+            return jsonify({
+                "success": False,
+                "message": "No baseline available yet. Behavior logged. Need at least 5 sessions.",
+                "risk_score": 0,
+                "risk_level": "UNKNOWN"
+            }), 200
+        
+        # Get recent behaviors for device checking
+        recent_behaviors = Behavior.get_user_behaviors(db, current_user_id, limit=20)
+        
+        # Calculate risk
+        risk_result = RiskCalculator.calculate_risk(
+            data,
+            baseline,
+            recent_behaviors
+        )
+        
+        # Log the risk score
+        RiskScore.create(db, current_user_id, risk_result)
+        
+        # Also log the behavior
+        Behavior.create(db, current_user_id, data)
+        
+        # Update baseline every 10 behaviors
+        behavior_count = Behavior.count_user_behaviors(db, current_user_id)
+        if behavior_count % 10 == 0:
+            BehaviorBaseline.calculate_and_save(db, current_user_id)
+        
+        return jsonify({
+            "success": True,
+            "risk_score": risk_result['risk_score'],
+            "risk_level": risk_result['risk_level'],
+            "action": risk_result['action_taken'],
+            "deviations": {
+                'typing': risk_result['typing_deviation'],
+                'location': risk_result['location_deviation'],
+                'time': risk_result['time_deviation'],
+                'device': risk_result['device_deviation']
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/risk/current', methods=['GET'])
+@jwt_required()
+def get_current_risk():
+    """Get latest risk score for current user"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        risk = RiskScore.get_latest(db, current_user_id)
+        
+        if not risk:
+            return jsonify({
+                "success": False,
+                "message": "No risk scores calculated yet",
+                "risk_score": 0
+            }), 404
+        
+        return jsonify({
+            "success": True,
+            "risk": {
+                'score': risk['risk_score'],
+                'level': risk['risk_level'],
+                'action': risk['action_taken'],
+                'timestamp': str(risk['timestamp']),
+                'deviations': {
+                    'typing': risk['typing_deviation'],
+                    'location': risk['location_deviation'],
+                    'time': risk['time_deviation'],
+                    'device': risk['device_deviation']
+                }
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/risk/history', methods=['GET'])
+@jwt_required()
+def get_risk_history():
+    """Get risk score history"""
+    try:
+        current_user_id = get_jwt_identity()
+        limit = request.args.get('limit', 20, type=int)
+        
+        risks = RiskScore.get_history(db, current_user_id, limit)
+        
+        risk_list = []
+        for r in risks:
+            risk_list.append({
+                'score': r['risk_score'],
+                'level': r['risk_level'],
+                'action': r['action_taken'],
+                'timestamp': str(r['timestamp'])
+            })
+        
+        return jsonify({
+            "success": True,
+            "risks": risk_list,
+            "count": len(risk_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/dashboard', methods=['GET'])
+@jwt_required()
+def get_dashboard():
+    """Get complete dashboard data"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Get user info
+        user = User.find_by_id(db, current_user_id)
+        
+        # Get latest risk
+        latest_risk = RiskScore.get_latest(db, current_user_id)
+        
+        # Get baseline
+        baseline = BehaviorBaseline.get_by_user_id(db, current_user_id)
+        
+        # Get behavior count
+        behavior_count = Behavior.count_user_behaviors(db, current_user_id)
+        
+        # Get recent risk history
+        risk_history = RiskScore.get_history(db, current_user_id, limit=10)
+        
+        dashboard_data = {
+            'user': {
+                'email': user['email'],
+                'member_since': str(user['created_at'])
+            },
+            'current_risk': {
+                'score': latest_risk['risk_score'] if latest_risk else 0,
+                'level': latest_risk['risk_level'] if latest_risk else 'UNKNOWN',
+                'last_updated': str(latest_risk['timestamp']) if latest_risk else None
+            },
+            'baseline_status': {
+                'calculated': baseline is not None,
+                'total_sessions': baseline['total_sessions'] if baseline else 0,
+                'last_updated': str(baseline['updated_at']) if baseline else None
+            },
+            'statistics': {
+                'total_behaviors': behavior_count,
+                'total_risk_checks': len(risk_history),
+                'avg_risk_score': round(sum(r['risk_score'] for r in risk_history) / len(risk_history), 2) if risk_history else 0
+            }
+        }
+        
+        return jsonify({
+            "success": True,
+            "dashboard": dashboard_data
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
 
 # ============================================
 # ERROR HANDLERS
@@ -305,16 +678,28 @@ def internal_error(e):
 # ============================================
 
 if __name__ == '__main__':
-    print("\n" + "="*50)
-    print("🚀 ZERO TRUST AUTH API STARTING...")
-    print("="*50)
-    print("\n📋 Available Endpoints:")
-    print("  POST   /api/setup              - Setup database")
-    print("  POST   /api/auth/register      - Register user")
-    print("  POST   /api/auth/login         - Login user")
-    print("  GET    /api/auth/profile       - Get profile (requires token)")
-    print("  POST   /api/auth/logout        - Logout user")
-    print("  GET    /api/health             - Health check")
-    print("\n" + "="*50 + "\n")
+    print("\n" + "="*60)
+    print("🚀 ZERO TRUST AUTH API v2.0 STARTING...")
+    print("="*60)
+    print("\n📋 Authentication Endpoints:")
+    print("  POST   /api/setup                    - Setup database")
+    print("  POST   /api/auth/register            - Register user")
+    print("  POST   /api/auth/login               - Login user")
+    print("  GET    /api/auth/profile             - Get profile")
+    print("  POST   /api/auth/logout              - Logout user")
+    print("\n🎯 Behavior Tracking Endpoints:")
+    print("  POST   /api/behavior/log             - Log behavior")
+    print("  GET    /api/behavior/history         - Get behavior history")
+    print("  GET    /api/behavior/baseline        - Get baseline")
+    print("  POST   /api/behavior/baseline/recalculate - Recalculate baseline")
+    print("\n📊 Risk Scoring Endpoints:")
+    print("  POST   /api/risk/calculate           - Calculate risk score")
+    print("  GET    /api/risk/current             - Get current risk")
+    print("  GET    /api/risk/history             - Get risk history")
+    print("  GET    /api/dashboard                - Get dashboard data")
+    print("\n💚 Health Endpoints:")
+    print("  GET    /                             - Health check")
+    print("  GET    /api/health                   - Detailed health")
+    print("\n" + "="*60 + "\n")
     
     app.run(debug=True, host='0.0.0.0', port=5000)
