@@ -1,0 +1,40 @@
+name: mobile_app
+description: Zero Trust Authentication App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  workmanager:
+  flutter:
+    sdk: flutter
+  
+  # UI
+  cupertino_icons: ^1.0.2
+  google_fonts: ^6.1.0
+  fl_chart: ^0.65.0
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # HTTP & Storage
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  
+  # Device Info & Location
+  device_info_plus: ^9.1.1
+  geolocator: ^10.1.0
+  permission_handler: ^11.1.0
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons:
+  flutter_launcher_icons_maker:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

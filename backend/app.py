@@ -898,27 +898,14 @@ def internal_error(e):
 
 if __name__ == '__main__':
     print("\n" + "="*65)
-    print("🚀 ZERO TRUST AUTH API v3.0 - ML POWERED!")
-    print("="*65)
-    print("\n📋 Authentication Endpoints:")
-    print("  POST   /api/auth/register            - Register user")
-    print("  POST   /api/auth/login               - Login user")
-    print("  GET    /api/auth/profile             - Get profile")
-    print("\n🎯 Behavior Tracking:")
-    print("  POST   /api/behavior/log             - Log behavior")
-    print("  GET    /api/behavior/history         - Get history")
-    print("  GET    /api/behavior/baseline        - Get baseline")
-    print("\n📊 Risk Scoring (ML-Enhanced):")
-    print("  POST   /api/risk/calculate           - Calculate risk (ML-powered)")
-    print("  GET    /api/risk/current             - Get current risk")
-    print("  GET    /api/risk/history             - Get risk history")
-    print("\n🤖 Machine Learning:")
-    print("  POST   /api/ml/train                 - Train ML model")
-    print("  GET    /api/ml/status                - Get ML status")
-    print("  POST   /api/ml/predict               - Get ML prediction")
-    print("  POST   /api/ml/retrain               - Retrain model")
-    print("\n📈 Dashboard:")
-    print("  GET    /api/dashboard                - Complete dashboard")
-    print("\n" + "="*65 + "\n")
+    print("🚀 ZERO TRUST AUTH API - RAILWAY DEPLOYMENT")
+    print("="*65 + "\n")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Railway provides PORT environment variable
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', 'False') == 'True'
+    
+    print(f"🌐 Starting server on port {port}")
+    print(f"🔧 Debug mode: {debug}\n")
+    
+    app.run(debug=debug, host='0.0.0.0', port=port)
