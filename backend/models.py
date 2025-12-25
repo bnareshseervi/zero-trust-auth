@@ -146,7 +146,6 @@ class Behavior:
             id SERIAL PRIMARY KEY,
             user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
             typing_speed FLOAT,
-            mouse_speed FLOAT,
             session_hour INTEGER,
             location_lat FLOAT,
             location_lng FLOAT,
@@ -155,7 +154,6 @@ class Behavior:
             screen_width INTEGER,
             screen_height INTEGER,
             session_duration INTEGER,
-            app_switches INTEGER,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         
@@ -196,10 +194,10 @@ class Behavior:
     def get_user_behaviors(db, user_id, limit=100):
         """Get user's behavior history"""
         query = """
-        SELECT id, user_id, typing_speed, mouse_speed, session_hour,
+        SELECT id, user_id, typing_speed, session_hour,
                location_lat, location_lng, device_model, device_os,
                screen_width, screen_height, session_duration, 
-               app_switches, timestamp
+               timestamp
         FROM behaviors
         WHERE user_id = %s
         ORDER BY timestamp DESC
@@ -218,9 +216,9 @@ class Behavior:
     def get_recent_for_baseline(db, user_id, limit=50):
         """Get recent behaviors for baseline calculation"""
         query = """
-        SELECT typing_speed, mouse_speed, session_hour,
+        SELECT typing_speed, session_hour,
                location_lat, location_lng, device_model, device_os,
-               screen_width, screen_height, session_duration, app_switches
+               screen_width, screen_height, session_duration
         FROM behaviors
         WHERE user_id = %s
         ORDER BY timestamp DESC
@@ -228,7 +226,6 @@ class Behavior:
         """
         return db.execute(query, (user_id, limit), fetch=True) or []
 
-
 class BehaviorBaseline:
     """User behavior baseline model"""
     
@@ -240,7 +237,6 @@ class BehaviorBaseline:
             id SERIAL PRIMARY KEY,
             user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
             avg_typing_speed FLOAT,
-            avg_mouse_speed FLOAT,
             avg_session_hour FLOAT,
             avg_location_lat FLOAT,
             avg_location_lng FLOAT,
@@ -249,35 +245,6 @@ class BehaviorBaseline:
             avg_screen_width FLOAT,
             avg_screen_height FLOAT,
             avg_session_duration FLOAT,
-            avg_app_switches FLOAT,
-            total_sessions INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-        db.execute(query)
-    
-class BehaviorBaseline:
-    """User behavior baseline model"""
-    
-    @staticmethod
-    def create_table(db):
-        """Create behavior_baselines table"""
-        query = """
-        CREATE TABLE IF NOT EXISTS behavior_baselines (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-            avg_typing_speed FLOAT,
-            avg_mouse_speed FLOAT,
-            avg_session_hour FLOAT,
-            avg_location_lat FLOAT,
-            avg_location_lng FLOAT,
-            common_device_model VARCHAR(255),
-            common_device_os VARCHAR(255),
-            avg_screen_width FLOAT,
-            avg_screen_height FLOAT,
-            avg_session_duration FLOAT,
-            avg_app_switches FLOAT,
             total_sessions INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
