@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/api_service.dart';
@@ -6,7 +8,7 @@ import '../utils/constants.dart';
 import '../utils/helpers.dart';
 
 class RiskHistoryScreen extends StatefulWidget {
-  const RiskHistoryScreen({Key? key}) : super(key: key);
+  const RiskHistoryScreen({super.key});
 
   @override
   State<RiskHistoryScreen> createState() => _RiskHistoryScreenState();
@@ -262,6 +264,7 @@ class _RiskHistoryScreenState extends State<RiskHistoryScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
+       
           backgroundColor: color.withOpacity(0.2),
           child: Text(
             risk.score.toInt().toString(),
@@ -282,6 +285,7 @@ class _RiskHistoryScreenState extends State<RiskHistoryScreen> {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
+      
             color: color.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),

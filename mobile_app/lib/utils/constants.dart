@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-static const String baseUrl = 'https://zero-trust-auth-production.up.railway.app';
+  static const String baseUrl =
+      'https://zero-trust-auth-production-097b.up.railway.app';
   // Use 'http://localhost:5000' for iOS Simulator
   // Use 'http://YOUR_IP:5000' for physical device
 

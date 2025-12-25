@@ -55,8 +55,8 @@ def setup_database():
             "error": str(e)
         }), 500
     
-    @app.route("/api/health", methods=["GET"])
-    def health_check():
+@app.route("/api/health", methods=["GET"])
+def health_check():
      return jsonify({
         "status": "ok",
         "service": "zero-trust-auth",
