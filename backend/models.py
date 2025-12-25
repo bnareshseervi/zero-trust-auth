@@ -87,15 +87,18 @@ class User:
     
     @staticmethod
     def create(db, email, password):
-        """Create a new user"""
-        password_hash = generate_password_hash(password)
-        query = """
-        INSERT INTO users (email, password_hash)
-        VALUES (%s, %s)
-        RETURNING id, email, created_at;
-        """
-        result = db.execute(query, (email, password_hash), fetch=True)
-        return result[0] if result else None
+      """Create a new user"""
+      from werkzeug.security import generate_password_hash
+    
+      password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+    
+      query = """
+      INSERT INTO users (email, password_hash)
+      VALUES (%s, %s)
+      RETURNING id, email, created_at;
+      """
+      result = db.execute(query, (email, password_hash), fetch=True)
+      return result[0] if result else None
     
     @staticmethod
     def find_by_email(db, email):
@@ -113,14 +116,20 @@ class User:
     
     @staticmethod
     def get_by_id(db, user_id):
-       query = "SELECT id, email FROM users WHERE id = %s;"
+       """Get user by ID"""
+       query = """
+       SELECT id, email, created_at, last_login 
+       FROM users 
+       WHERE id = %s;
+       """
        result = db.execute(query, (user_id,), fetch=True)
        return result[0] if result else None
     
     @staticmethod
     def verify_password(password_hash, password):
-        """Verify password against hash"""
-        return check_password_hash(password_hash, password)
+       """Verify password against hash"""
+       from werkzeug.security import check_password_hash
+       return check_password_hash(password_hash, password)
     
     @staticmethod
     def update_last_login(db, user_id):
