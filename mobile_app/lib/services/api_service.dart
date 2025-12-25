@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../utils/constants.dart';
 import '../models/user_model.dart';
 import '../models/behavior_model.dart';
@@ -12,59 +13,78 @@ class ApiService {
 
   String? _token;
 
-  // Initialize token from storage
+  // =====================================================
+  // INIT (MUST BE CALLED ON APP START)
+  // =====================================================
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(AppConstants.tokenKey);
+    print('🔐 Token loaded on init: ${_token != null}');
   }
 
-  // Save token to storage
+  // =====================================================
+  // TOKEN STORAGE
+  // =====================================================
   Future<void> saveToken(String token) async {
     _token = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(AppConstants.tokenKey, token);
+    print('✅ Token saved');
   }
 
-  // Clear token
   Future<void> clearToken() async {
     _token = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.tokenKey);
+    print('🧹 Token cleared');
   }
 
-  // Get headers
-  Map<String, String> _getHeaders({bool needsAuth = false}) {
+  // =====================================================
+  // HEADERS (SAFE + BULLETPROOF)
+  // =====================================================
+  Future<Map<String, String>> _getHeaders({bool needsAuth = false}) async {
     final headers = {
       'Content-Type': 'application/json',
     };
 
-    if (needsAuth && _token != null) {
-      headers['Authorization'] = 'Bearer $_token';
+    if (needsAuth) {
+      if (_token == null) {
+        final prefs = await SharedPreferences.getInstance();
+        _token = prefs.getString(AppConstants.tokenKey);
+      }
+
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
     }
 
     return headers;
   }
 
-  // Handle response
+  // =====================================================
+  // RESPONSE HANDLER (SAFE)
+  // =====================================================
   Map<String, dynamic> _handleResponse(http.Response response) {
+    final body = json.decode(response.body);
+
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      return json.decode(response.body);
-    } else {
-      final error = json.decode(response.body);
-      throw Exception(error['error'] ?? 'Request failed');
+      return body;
     }
+
+    final message = body['error'] ?? body['message'] ?? 'Request failed';
+
+    throw Exception(message);
   }
 
-  // ============================================
-  // AUTHENTICATION APIs
-  // ============================================
-
+  // =====================================================
+  // AUTH APIs
+  // =====================================================
   Future<Map<String, dynamic>> register(String email, String password) async {
     try {
       final response = await http
           .post(
             Uri.parse('${AppConstants.baseUrl}/api/auth/register'),
-            headers: _getHeaders(),
+            headers: await _getHeaders(),
             body: json.encode({
               'email': email,
               'password': password,
@@ -83,7 +103,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('${AppConstants.baseUrl}/api/auth/login'),
-            headers: _getHeaders(),
+            headers: await _getHeaders(),
             body: json.encode({
               'email': email,
               'password': password,
@@ -93,7 +113,6 @@ class ApiService {
 
       final data = _handleResponse(response);
 
-      // Save token
       if (data['token'] != null) {
         await saveToken(data['token']);
       }
@@ -109,7 +128,7 @@ class ApiService {
       final response = await http
           .get(
             Uri.parse('${AppConstants.baseUrl}/api/auth/profile'),
-            headers: _getHeaders(needsAuth: true),
+            headers: await _getHeaders(needsAuth: true),
           )
           .timeout(AppConstants.apiTimeout);
 
@@ -122,187 +141,115 @@ class ApiService {
 
   Future<void> logout() async {
     try {
-      await http
-          .post(
-            Uri.parse('${AppConstants.baseUrl}/api/auth/logout'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
-
+      await http.post(
+        Uri.parse('${AppConstants.baseUrl}/api/auth/logout'),
+        headers: await _getHeaders(needsAuth: true),
+      );
+    } finally {
       await clearToken();
-    } catch (e) {
-      // Clear token anyway
-      await clearToken();
-      throw Exception('Logout failed: $e');
     }
   }
 
-  // ============================================
+  // =====================================================
   // BEHAVIOR APIs
-  // ============================================
-
+  // =====================================================
   Future<Map<String, dynamic>> logBehavior(BehaviorData behavior) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${AppConstants.baseUrl}/api/behavior/log'),
-            headers: _getHeaders(needsAuth: true),
-            body: json.encode(behavior.toJson()),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.post(
+      Uri.parse('${AppConstants.baseUrl}/api/behavior/log'),
+      headers: await _getHeaders(needsAuth: true),
+      body: json.encode(behavior.toJson()),
+    );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Failed to log behavior: $e');
-    }
+    return _handleResponse(response);
   }
 
   Future<Map<String, dynamic>> getBaseline() async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/api/behavior/baseline'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.get(
+      Uri.parse('${AppConstants.baseUrl}/api/behavior/baseline'),
+      headers: await _getHeaders(needsAuth: true),
+    );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Failed to get baseline: $e');
-    }
+    return _handleResponse(response);
   }
 
-  // ============================================
+  // =====================================================
   // RISK APIs
-  // ============================================
-
+  // =====================================================
   Future<Map<String, dynamic>> calculateRisk(BehaviorData behavior) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${AppConstants.baseUrl}/api/risk/calculate'),
-            headers: _getHeaders(needsAuth: true),
-            body: json.encode(behavior.toJson()),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.post(
+      Uri.parse('${AppConstants.baseUrl}/api/risk/calculate'),
+      headers: await _getHeaders(needsAuth: true),
+      body: json.encode(behavior.toJson()),
+    );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Failed to calculate risk: $e');
-    }
+    return _handleResponse(response);
   }
 
   Future<RiskScore> getCurrentRisk() async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/api/risk/current'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.get(
+      Uri.parse('${AppConstants.baseUrl}/api/risk/current'),
+      headers: await _getHeaders(needsAuth: true),
+    );
 
-      final data = _handleResponse(response);
-      return RiskScore.fromJson(data['risk']);
-    } catch (e) {
-      throw Exception('Failed to get current risk: $e');
-    }
+    final data = _handleResponse(response);
+    return RiskScore.fromJson(data['risk']);
   }
 
   Future<List<RiskScore>> getRiskHistory({int limit = 20}) async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/api/risk/history?limit=$limit'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.get(
+      Uri.parse('${AppConstants.baseUrl}/api/risk/history?limit=$limit'),
+      headers: await _getHeaders(needsAuth: true),
+    );
 
-      final data = _handleResponse(response);
-      final risks = data['risks'] as List;
-      return risks.map((r) => RiskScore.fromJson(r)).toList();
-    } catch (e) {
-      throw Exception('Failed to get risk history: $e');
-    }
+    final data = _handleResponse(response);
+    return (data['risks'] as List).map((e) => RiskScore.fromJson(e)).toList();
   }
 
-  // ============================================
-  // DASHBOARD API
-  // ============================================
-
+  // =====================================================
+  // DASHBOARD
+  // =====================================================
   Future<DashboardData> getDashboard() async {
-    try {
-      print(
-          '📊 Fetching dashboard from: ${AppConstants.baseUrl}/api/dashboard');
-      print('📊 Token exists: ${_token != null}');
+    final response = await http.get(
+      Uri.parse('${AppConstants.baseUrl}/api/dashboard'),
+      headers: await _getHeaders(needsAuth: true),
+    );
 
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/api/dashboard'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
-
-      print('📊 Dashboard response status: ${response.statusCode}');
-      print('📊 Dashboard response body: ${response.body}');
-
-      final data = _handleResponse(response);
-
-      print('✅ Dashboard data received, parsing...');
-      return DashboardData.fromJson(data);
-    } catch (e) {
-      print('❌ Dashboard error: $e');
-      throw Exception('Failed to get dashboard: $e');
-    }
+    final data = _handleResponse(response);
+    return DashboardData.fromJson(data);
   }
 
-  // ============================================
+  // =====================================================
   // ML APIs
-  // ============================================
-
+  // =====================================================
   Future<Map<String, dynamic>> trainModel() async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${AppConstants.baseUrl}/api/ml/train'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.post(
+      Uri.parse('${AppConstants.baseUrl}/api/ml/train'),
+      headers: await _getHeaders(needsAuth: true),
+    );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Failed to train model: $e');
-    }
+    return _handleResponse(response);
   }
 
   Future<Map<String, dynamic>> getMLStatus() async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/api/ml/status'),
-            headers: _getHeaders(needsAuth: true),
-          )
-          .timeout(AppConstants.apiTimeout);
+    final response = await http.get(
+      Uri.parse('${AppConstants.baseUrl}/api/ml/status'),
+      headers: await _getHeaders(needsAuth: true),
+    );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Failed to get ML status: $e');
-    }
+    return _handleResponse(response);
   }
 
-  // ============================================
+  // =====================================================
   // HEALTH CHECK
-  // ============================================
-
+  // =====================================================
   Future<bool> checkHealth() async {
     try {
       final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/api/health'),
-          )
-          .timeout(Duration(seconds: 5));
+          .get(Uri.parse('${AppConstants.baseUrl}/api/health'))
+          .timeout(const Duration(seconds: 5));
 
       return response.statusCode == 200;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }

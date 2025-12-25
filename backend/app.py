@@ -23,7 +23,11 @@ from ml_engine import MLEngine
 app = Flask(__name__)
 app.config.from_object(Config)
 
-CORS(app)
+CORS( app,
+    resources={r"/api/*": {"origins": "*"}},
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["Authorization"],)
 jwt = JWTManager(app)
 
 # =========================

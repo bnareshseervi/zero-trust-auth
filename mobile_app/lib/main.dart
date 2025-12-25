@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_app/screens/risk_history_screen.dart';
 import 'package:mobile_app/screens/settings_screen.dart';
+import 'package:mobile_app/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/behavior_provider.dart';
@@ -9,7 +10,9 @@ import 'screens/register_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'utils/constants.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ApiService().init(); // 🔥 REQUIRED
   runApp(const MyApp());
 }
 
