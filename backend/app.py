@@ -6,6 +6,8 @@ from models import Database, User
 import redis
 import json
 
+from models import Database, User, Behavior, BehaviorBaseline, RiskScore, MLModel
+
 from models import Database, User, Behavior, BehaviorBaseline, RiskScore
 from risk_calculator import RiskCalculator
 
@@ -23,7 +25,7 @@ CORS(app)
 # Initialize JWT
 jwt = JWTManager(app)
 
-# Initialize Database
+# Initialize Database 
 db = Database()
 
 # Initialize Redis
@@ -42,8 +44,8 @@ except Exception as e:
 
 @app.route('/api/setup', methods=['POST'])
 def setup_database():
-    """Initialize database tables (run once)"""
     try:
+        db = get_db()  # Get DB on demand
         User.create_table(db)
         Behavior.create_table(db)
         BehaviorBaseline.create_table(db)
@@ -272,7 +274,7 @@ def detailed_health():
     
     # Check database
     try:
-        db.execute("SELECT 1;", fetch=True)
+        get_db().execute()("SELECT 1;", fetch=True)
         health_status["database"] = True
     except:
         pass
