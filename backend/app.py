@@ -21,6 +21,116 @@ jwt = JWTManager(app)
 # Database - lazy initialization
 db = Database()
 
+# ==========================================
+# AUTO-INITIALIZE DATABASE ON STARTUP
+# ==========================================
+def initialize_database():
+    """Auto-create all database tables if they don't exist"""
+    try:
+        # Check if tables exist
+        db.execute("SELECT 1 FROM users LIMIT 1;", fetch=True)
+        print("✅ Database tables already exist")
+    except Exception as e:
+        print(f"🔄 Database tables not found. Initializing...")
+        try:
+            # Create users table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP
+                );
+            """)
+            
+            # Create behaviors table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS behaviors (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    typing_speed FLOAT,
+                    mouse_speed FLOAT,
+                    session_hour INTEGER,
+                    location_lat FLOAT,
+                    location_lng FLOAT,
+                    device_model VARCHAR(255),
+                    device_os VARCHAR(255),
+                    screen_width INTEGER,
+                    screen_height INTEGER,
+                    session_duration INTEGER,
+                    app_switches INTEGER,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
+            # Create behavior_baselines table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS behavior_baselines (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    avg_typing_speed FLOAT,
+                    avg_mouse_speed FLOAT,
+                    avg_session_hour FLOAT,
+                    avg_location_lat FLOAT,
+                    avg_location_lng FLOAT,
+                    common_device_model VARCHAR(255),
+                    common_device_os VARCHAR(255),
+                    avg_screen_width FLOAT,
+                    avg_screen_height FLOAT,
+                    avg_session_duration FLOAT,
+                    avg_app_switches FLOAT,
+                    total_sessions INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
+            # Create risk_scores table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS risk_scores (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    risk_score FLOAT NOT NULL,
+                    risk_level VARCHAR(50),
+                    action_taken VARCHAR(100),
+                    typing_deviation FLOAT,
+                    location_deviation FLOAT,
+                    time_deviation FLOAT,
+                    device_deviation FLOAT,
+                    ml_anomaly_score FLOAT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
+            # Create ml_models table
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS ml_models (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    model_data BYTEA,
+                    is_trained BOOLEAN DEFAULT FALSE,
+                    training_samples INTEGER,
+                    last_trained TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
+            # Create indexes
+            db.execute("CREATE INDEX IF NOT EXISTS idx_behaviors_user_id ON behaviors(user_id);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_behaviors_timestamp ON behaviors(timestamp);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_risk_scores_user_id ON risk_scores(user_id);")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_risk_scores_timestamp ON risk_scores(timestamp);")
+            
+            print("✅ Database tables created successfully!")
+            
+        except Exception as init_error:
+            print(f"❌ Database initialization failed: {init_error}")
+            raise
+
+# Run initialization
+initialize_database()
+
 # Redis (optional)
 redis_client = None
 try:
