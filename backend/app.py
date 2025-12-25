@@ -26,12 +26,8 @@ db = Database()
 # ==========================================
 def initialize_database():
     """Auto-create all database tables if they don't exist"""
-    try:
-        # Check if tables exist
-        db.execute("SELECT 1 FROM users LIMIT 1;", fetch=True)
-        print("✅ Database tables already exist")
-    except Exception as e:
-        print(f"🔄 Database tables not found. Initializing...")
+    
+    def initialize_database():     
         try:
             # Create users table
             db.execute("""
