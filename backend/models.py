@@ -314,8 +314,8 @@ def calculate_and_save(db, user_id):
     
     return result[0] if result else None
     
-    @staticmethod
-    def get_by_user_id(db, user_id):
+@staticmethod
+def get_by_user_id(db, user_id):
         """Get baseline for user"""
         query = "SELECT * FROM behavior_baselines WHERE user_id = %s;"
         result = db.execute(query, (user_id,), fetch=True)
