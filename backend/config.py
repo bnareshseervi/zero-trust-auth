@@ -12,6 +12,8 @@ class Config:
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     
+    # Keep this for compatibility
+    DATABASE_URL = database_url
     SQLALCHEMY_DATABASE_URI = database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
