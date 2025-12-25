@@ -86,6 +86,30 @@ def setup():
             "error": str(e)
         }), 500
 
+@app.route("/api/dashboard", methods=["GET"])
+@jwt_required()
+def dashboard():
+    user_id = get_jwt_identity()
+
+    user = User.get_by_id(db, user_id)
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "dashboard": {
+            "user": {
+                "id": user["id"],
+                "email": user["email"]
+            },
+            "stats": {
+                "behaviors": 0,
+                "risk_checks": 0
+            },
+            "message": "Dashboard loaded successfully"
+        }
+    }), 200
+
 # =========================
 # AUTH ROUTES
 # =========================
