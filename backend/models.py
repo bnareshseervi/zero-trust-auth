@@ -87,18 +87,16 @@ class User:
     
     @staticmethod
     def create(db, email, password):
-      """Create a new user"""
-      from werkzeug.security import generate_password_hash
-    
-      password_hash = generate_password_hash(password, method='pbkdf2:sha256')
-    
-      query = """
-      INSERT INTO users (email, password_hash)
-      VALUES (%s, %s)
-      RETURNING id, email, created_at;
-      """
-      result = db.execute(query, (email, password_hash), fetch=True)
-      return result[0] if result else None
+        """Create a new user"""
+        password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+        
+        query = """
+        INSERT INTO users (email, password_hash)
+        VALUES (%s, %s)
+        RETURNING id, email, created_at;
+        """
+        result = db.execute(query, (email, password_hash), fetch=True)
+        return result[0] if result else None
     
     @staticmethod
     def find_by_email(db, email):
@@ -116,99 +114,25 @@ class User:
     
     @staticmethod
     def get_by_id(db, user_id):
-       """Get user by ID"""
-       query = """
-       SELECT id, email, created_at, last_login 
-       FROM users 
-       WHERE id = %s;
-       """
-       result = db.execute(query, (user_id,), fetch=True)
-       return result[0] if result else None
+        """Get user by ID"""
+        query = """
+        SELECT id, email, created_at, last_login 
+        FROM users 
+        WHERE id = %s;
+        """
+        result = db.execute(query, (user_id,), fetch=True)
+        return result[0] if result else None
     
     @staticmethod
     def verify_password(password_hash, password):
-       """Verify password against hash"""
-       from werkzeug.security import check_password_hash
-       return check_password_hash(password_hash, password)
+        """Verify password against hash"""
+        return check_password_hash(password_hash, password)
     
     @staticmethod
     def update_last_login(db, user_id):
         """Update last login timestamp"""
         query = "UPDATE users SET last_login = %s WHERE id = %s;"
         db.execute(query, (datetime.now(), user_id))
-
-
-class Behavior:
-    """Behavior logging model"""
-    
-    @staticmethod
-    def create_table(db):
-        """Create behavior table"""
-        query = """
-        CREATE TABLE IF NOT EXISTS behaviors (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            typing_speed FLOAT,
-            avg_tap_pressure FLOAT,
-            location_lat FLOAT,
-            location_lng FLOAT,
-            device_model VARCHAR(100),
-            device_os VARCHAR(50),
-            session_hour INTEGER,
-            session_duration INTEGER,
-            screen_width INTEGER,
-            screen_height INTEGER,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE INDEX IF NOT EXISTS idx_behaviors_user_id ON behaviors(user_id);
-        CREATE INDEX IF NOT EXISTS idx_behaviors_timestamp ON behaviors(timestamp);
-        """
-        db.execute(query)
-        print("✅ Behaviors table created!")
-    
-    @staticmethod
-    def create(db, user_id, behavior_data):
-        """Log a new behavior"""
-        query = """
-        INSERT INTO behaviors (
-            user_id, typing_speed, avg_tap_pressure, location_lat, location_lng,
-            device_model, device_os, session_hour, session_duration,
-            screen_width, screen_height
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id, timestamp;
-        """
-        result = db.execute(query, (
-            user_id,
-            behavior_data.get('typing_speed', 0),
-            behavior_data.get('avg_tap_pressure', 0),
-            behavior_data.get('location_lat', 0),
-            behavior_data.get('location_lng', 0),
-            behavior_data.get('device_model', ''),
-            behavior_data.get('device_os', ''),
-            behavior_data.get('session_hour', datetime.now().hour),
-            behavior_data.get('session_duration', 0),
-            behavior_data.get('screen_width', 1080),
-            behavior_data.get('screen_height', 2400)
-        ), fetch=True)
-        return result[0] if result else None
-    
-    @staticmethod
-    def get_user_behaviors(db, user_id, limit=100):
-        """Get user's behavior history"""
-        query = """
-        SELECT * FROM behaviors 
-        WHERE user_id = %s 
-        ORDER BY timestamp DESC 
-        LIMIT %s;
-        """
-        return db.execute(query, (user_id, limit), fetch=True)
-    
-    @staticmethod
-    def count_user_behaviors(db, user_id):
-        """Count total behaviors for user"""
-        query = "SELECT COUNT(*) as count FROM behaviors WHERE user_id = %s;"
-        result = db.execute(query, (user_id,), fetch=True)
-        return result[0]['count'] if result else 0
 
 
 class Behavior:
@@ -271,34 +195,19 @@ class Behavior:
         return result[0] if result else None
     
     @staticmethod
-    def create(db, user_id, data):
-     """Create new behavior record"""
-     query = """
-     INSERT INTO behaviors (
-        user_id, typing_speed, mouse_speed, session_hour,
-        location_lat, location_lng, device_model, device_os,
-        screen_width, screen_height, session_duration, app_switches
-     )
-     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-     RETURNING id, user_id, typing_speed, timestamp;
-     """
-    
-     result = db.execute(query, (
-        user_id,
-        data.get('typing_speed', 0.0),
-        data.get('mouse_speed', 0.0),
-        data.get('session_hour', 0),
-        data.get('location_lat', 0.0),
-        data.get('location_lng', 0.0),
-        data.get('device_model', 'Unknown'),
-        data.get('device_os', 'Unknown'),
-        data.get('screen_width', 0),
-        data.get('screen_height', 0),
-        data.get('session_duration', 0),
-        data.get('app_switches', 0)
-    ), fetch=True)
-    
-     return result[0] if result else None
+    def get_user_behaviors(db, user_id, limit=100):
+        """Get user's behavior history"""
+        query = """
+        SELECT id, user_id, typing_speed, mouse_speed, session_hour,
+               location_lat, location_lng, device_model, device_os,
+               screen_width, screen_height, session_duration, 
+               app_switches, timestamp
+        FROM behaviors
+        WHERE user_id = %s
+        ORDER BY timestamp DESC
+        LIMIT %s;
+        """
+        return db.execute(query, (user_id, limit), fetch=True) or []
     
     @staticmethod
     def count_user_behaviors(db, user_id):
@@ -320,6 +229,104 @@ class Behavior:
         LIMIT %s;
         """
         return db.execute(query, (user_id, limit), fetch=True) or []
+
+
+class BehaviorBaseline:
+    """User behavior baseline model"""
+    
+    @staticmethod
+    def create_table(db):
+        """Create behavior_baselines table"""
+        query = """
+        CREATE TABLE IF NOT EXISTS behavior_baselines (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            avg_typing_speed FLOAT,
+            avg_mouse_speed FLOAT,
+            avg_session_hour FLOAT,
+            avg_location_lat FLOAT,
+            avg_location_lng FLOAT,
+            common_device_model VARCHAR(255),
+            common_device_os VARCHAR(255),
+            avg_screen_width FLOAT,
+            avg_screen_height FLOAT,
+            avg_session_duration FLOAT,
+            avg_app_switches FLOAT,
+            total_sessions INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        db.execute(query)
+    
+    @staticmethod
+    def calculate_and_save(db, user_id):
+        """Calculate and save baseline from recent behaviors"""
+        behaviors = Behavior.get_recent_for_baseline(db, user_id, limit=50)
+        
+        if len(behaviors) < 5:
+            return None
+        
+        # Calculate averages
+        avg_typing = sum(b['typing_speed'] for b in behaviors) / len(behaviors)
+        avg_mouse = sum(b['mouse_speed'] for b in behaviors) / len(behaviors)
+        avg_hour = sum(b['session_hour'] for b in behaviors) / len(behaviors)
+        avg_lat = sum(b['location_lat'] for b in behaviors) / len(behaviors)
+        avg_lng = sum(b['location_lng'] for b in behaviors) / len(behaviors)
+        avg_screen_w = sum(b['screen_width'] for b in behaviors) / len(behaviors)
+        avg_screen_h = sum(b['screen_height'] for b in behaviors) / len(behaviors)
+        avg_duration = sum(b['session_duration'] for b in behaviors) / len(behaviors)
+        avg_switches = sum(b['app_switches'] for b in behaviors) / len(behaviors)
+        
+        # Most common device/os
+        devices = [b['device_model'] for b in behaviors]
+        oses = [b['device_os'] for b in behaviors]
+        common_device = max(set(devices), key=devices.count)
+        common_os = max(set(oses), key=oses.count)
+        
+        # Upsert baseline
+        query = """
+        INSERT INTO behavior_baselines (
+            user_id, avg_typing_speed, avg_mouse_speed, avg_session_hour,
+            avg_location_lat, avg_location_lng, common_device_model, common_device_os,
+            avg_screen_width, avg_screen_height, avg_session_duration, avg_app_switches,
+            total_sessions, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+            avg_typing_speed = EXCLUDED.avg_typing_speed,
+            avg_mouse_speed = EXCLUDED.avg_mouse_speed,
+            avg_session_hour = EXCLUDED.avg_session_hour,
+            avg_location_lat = EXCLUDED.avg_location_lat,
+            avg_location_lng = EXCLUDED.avg_location_lng,
+            common_device_model = EXCLUDED.common_device_model,
+            common_device_os = EXCLUDED.common_device_os,
+            avg_screen_width = EXCLUDED.avg_screen_width,
+            avg_screen_height = EXCLUDED.avg_screen_height,
+            avg_session_duration = EXCLUDED.avg_session_duration,
+            avg_app_switches = EXCLUDED.avg_app_switches,
+            total_sessions = EXCLUDED.total_sessions,
+            updated_at = EXCLUDED.updated_at
+        RETURNING *;
+        """
+        
+        result = db.execute(query, (
+            user_id, avg_typing, avg_mouse, avg_hour,
+            avg_lat, avg_lng, common_device, common_os,
+            avg_screen_w, avg_screen_h, avg_duration, avg_switches,
+            len(behaviors), datetime.now()
+        ), fetch=True)
+        
+        return result[0] if result else None
+    
+    @staticmethod
+    def get_by_user_id(db, user_id):
+        """Get baseline for user"""
+        query = "SELECT * FROM behavior_baselines WHERE user_id = %s;"
+        result = db.execute(query, (user_id,), fetch=True)
+        return result[0] if result else None
+
 
 class RiskScore:
     """Risk score model"""
