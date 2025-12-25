@@ -169,18 +169,17 @@ class Behavior:
         """Create new behavior record"""
         query = """
         INSERT INTO behaviors (
-            user_id, typing_speed, mouse_speed, session_hour,
+            user_id, typing_speed, session_hour,
             location_lat, location_lng, device_model, device_os,
-            screen_width, screen_height, session_duration, app_switches
+            screen_width, screen_height, session_duration
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id, user_id, typing_speed, timestamp;
         """
         
         result = db.execute(query, (
             user_id,
             data.get('typing_speed', 0.0),
-            data.get('mouse_speed', 0.0),
             data.get('session_hour', 0),
             data.get('location_lat', 0.0),
             data.get('location_lng', 0.0),
@@ -189,7 +188,6 @@ class Behavior:
             data.get('screen_width', 0),
             data.get('screen_height', 0),
             data.get('session_duration', 0),
-            data.get('app_switches', 0)
         ), fetch=True)
         
         return result[0] if result else None
@@ -259,66 +257,62 @@ class BehaviorBaseline:
         """
         db.execute(query)
     
-    @staticmethod
-    def calculate_and_save(db, user_id):
-        """Calculate and save baseline from recent behaviors"""
-        behaviors = Behavior.get_recent_for_baseline(db, user_id, limit=50)
-        
-        if len(behaviors) < 5:
-            return None
-        
-        # Calculate averages
-        avg_typing = sum(b['typing_speed'] for b in behaviors) / len(behaviors)
-        avg_mouse = sum(b['mouse_speed'] for b in behaviors) / len(behaviors)
-        avg_hour = sum(b['session_hour'] for b in behaviors) / len(behaviors)
-        avg_lat = sum(b['location_lat'] for b in behaviors) / len(behaviors)
-        avg_lng = sum(b['location_lng'] for b in behaviors) / len(behaviors)
-        avg_screen_w = sum(b['screen_width'] for b in behaviors) / len(behaviors)
-        avg_screen_h = sum(b['screen_height'] for b in behaviors) / len(behaviors)
-        avg_duration = sum(b['session_duration'] for b in behaviors) / len(behaviors)
-        avg_switches = sum(b['app_switches'] for b in behaviors) / len(behaviors)
-        
-        # Most common device/os
-        devices = [b['device_model'] for b in behaviors]
-        oses = [b['device_os'] for b in behaviors]
-        common_device = max(set(devices), key=devices.count)
-        common_os = max(set(oses), key=oses.count)
-        
-        # Upsert baseline
-        query = """
-        INSERT INTO behavior_baselines (
-            user_id, avg_typing_speed, avg_mouse_speed, avg_session_hour,
-            avg_location_lat, avg_location_lng, common_device_model, common_device_os,
-            avg_screen_width, avg_screen_height, avg_session_duration, avg_app_switches,
-            total_sessions, updated_at
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (user_id) 
-        DO UPDATE SET 
-            avg_typing_speed = EXCLUDED.avg_typing_speed,
-            avg_mouse_speed = EXCLUDED.avg_mouse_speed,
-            avg_session_hour = EXCLUDED.avg_session_hour,
-            avg_location_lat = EXCLUDED.avg_location_lat,
-            avg_location_lng = EXCLUDED.avg_location_lng,
-            common_device_model = EXCLUDED.common_device_model,
-            common_device_os = EXCLUDED.common_device_os,
-            avg_screen_width = EXCLUDED.avg_screen_width,
-            avg_screen_height = EXCLUDED.avg_screen_height,
-            avg_session_duration = EXCLUDED.avg_session_duration,
-            avg_app_switches = EXCLUDED.avg_app_switches,
-            total_sessions = EXCLUDED.total_sessions,
-            updated_at = EXCLUDED.updated_at
-        RETURNING *;
-        """
-        
-        result = db.execute(query, (
-            user_id, avg_typing, avg_mouse, avg_hour,
-            avg_lat, avg_lng, common_device, common_os,
-            avg_screen_w, avg_screen_h, avg_duration, avg_switches,
-            len(behaviors), datetime.now()
-        ), fetch=True)
-        
-        return result[0] if result else None
+@staticmethod
+def calculate_and_save(db, user_id):
+    """Calculate and save baseline from recent behaviors"""
+    behaviors = Behavior.get_recent_for_baseline(db, user_id, limit=50)
+    
+    if len(behaviors) < 5:
+        return None
+    
+    # Calculate averages (SIMPLIFIED - no mouse/app_switches)
+    avg_typing = sum(b['typing_speed'] for b in behaviors) / len(behaviors)
+    avg_hour = sum(b['session_hour'] for b in behaviors) / len(behaviors)
+    avg_lat = sum(b['location_lat'] for b in behaviors) / len(behaviors)
+    avg_lng = sum(b['location_lng'] for b in behaviors) / len(behaviors)
+    avg_screen_w = sum(b['screen_width'] for b in behaviors) / len(behaviors)
+    avg_screen_h = sum(b['screen_height'] for b in behaviors) / len(behaviors)
+    avg_duration = sum(b['session_duration'] for b in behaviors) / len(behaviors)
+    
+    # Most common device/os
+    devices = [b['device_model'] for b in behaviors]
+    oses = [b['device_os'] for b in behaviors]
+    common_device = max(set(devices), key=devices.count)
+    common_os = max(set(oses), key=oses.count)
+    
+    # Upsert baseline
+    query = """
+    INSERT INTO behavior_baselines (
+        user_id, avg_typing_speed, avg_session_hour,
+        avg_location_lat, avg_location_lng, common_device_model, common_device_os,
+        avg_screen_width, avg_screen_height, avg_session_duration,
+        total_sessions, updated_at
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (user_id) 
+    DO UPDATE SET 
+        avg_typing_speed = EXCLUDED.avg_typing_speed,
+        avg_session_hour = EXCLUDED.avg_session_hour,
+        avg_location_lat = EXCLUDED.avg_location_lat,
+        avg_location_lng = EXCLUDED.avg_location_lng,
+        common_device_model = EXCLUDED.common_device_model,
+        common_device_os = EXCLUDED.common_device_os,
+        avg_screen_width = EXCLUDED.avg_screen_width,
+        avg_screen_height = EXCLUDED.avg_screen_height,
+        avg_session_duration = EXCLUDED.avg_session_duration,
+        total_sessions = EXCLUDED.total_sessions,
+        updated_at = EXCLUDED.updated_at
+    RETURNING *;
+    """
+    
+    result = db.execute(query, (
+        user_id, avg_typing, avg_hour,
+        avg_lat, avg_lng, common_device, common_os,
+        avg_screen_w, avg_screen_h, avg_duration,
+        len(behaviors), datetime.now()
+    ), fetch=True)
+    
+    return result[0] if result else None
     
     @staticmethod
     def get_by_user_id(db, user_id):

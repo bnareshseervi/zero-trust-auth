@@ -44,13 +44,12 @@ def initialize_database():
                 );
             """)
             
-            # Create behaviors table
+            # Create behaviors table (SIMPLIFIED - no mouse_speed/app_switches)
             db.execute("""
                 CREATE TABLE IF NOT EXISTS behaviors (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                     typing_speed FLOAT,
-                    mouse_speed FLOAT,
                     session_hour INTEGER,
                     location_lat FLOAT,
                     location_lng FLOAT,
@@ -59,18 +58,16 @@ def initialize_database():
                     screen_width INTEGER,
                     screen_height INTEGER,
                     session_duration INTEGER,
-                    app_switches INTEGER,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
             
-            # Create behavior_baselines table
+            # Create behavior_baselines table (SIMPLIFIED)
             db.execute("""
                 CREATE TABLE IF NOT EXISTS behavior_baselines (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
                     avg_typing_speed FLOAT,
-                    avg_mouse_speed FLOAT,
                     avg_session_hour FLOAT,
                     avg_location_lat FLOAT,
                     avg_location_lng FLOAT,
@@ -79,7 +76,6 @@ def initialize_database():
                     avg_screen_width FLOAT,
                     avg_screen_height FLOAT,
                     avg_session_duration FLOAT,
-                    avg_app_switches FLOAT,
                     total_sessions INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -98,7 +94,7 @@ def initialize_database():
                     location_deviation FLOAT,
                     time_deviation FLOAT,
                     device_deviation FLOAT,
-                    ml_anomaly_score FLOAT,
+                    ml_anomaly_score FLOAT DEFAULT 0,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -108,11 +104,10 @@ def initialize_database():
                 CREATE TABLE IF NOT EXISTS ml_models (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-                    model_data BYTEA,
                     is_trained BOOLEAN DEFAULT FALSE,
-                    training_samples INTEGER,
-                    last_trained TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    training_samples INTEGER DEFAULT 0,
+                    features_count INTEGER DEFAULT 0,
+                    last_trained TIMESTAMP
                 );
             """)
             
