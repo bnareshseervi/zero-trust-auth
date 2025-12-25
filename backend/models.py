@@ -271,19 +271,34 @@ class Behavior:
         return result[0] if result else None
     
     @staticmethod
-    def get_user_behaviors(db, user_id, limit=100):
-        """Get user's behavior history"""
-        query = """
-        SELECT id, user_id, typing_speed, mouse_speed, session_hour,
-               location_lat, location_lng, device_model, device_os,
-               screen_width, screen_height, session_duration, 
-               app_switches, timestamp
-        FROM behaviors
-        WHERE user_id = %s
-        ORDER BY timestamp DESC
-        LIMIT %s;
-        """
-        return db.execute(query, (user_id, limit), fetch=True) or []
+    def create(db, user_id, data):
+     """Create new behavior record"""
+     query = """
+     INSERT INTO behaviors (
+        user_id, typing_speed, mouse_speed, session_hour,
+        location_lat, location_lng, device_model, device_os,
+        screen_width, screen_height, session_duration, app_switches
+     )
+     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+     RETURNING id, user_id, typing_speed, timestamp;
+     """
+    
+     result = db.execute(query, (
+        user_id,
+        data.get('typing_speed', 0.0),
+        data.get('mouse_speed', 0.0),
+        data.get('session_hour', 0),
+        data.get('location_lat', 0.0),
+        data.get('location_lng', 0.0),
+        data.get('device_model', 'Unknown'),
+        data.get('device_os', 'Unknown'),
+        data.get('screen_width', 0),
+        data.get('screen_height', 0),
+        data.get('session_duration', 0),
+        data.get('app_switches', 0)
+    ), fetch=True)
+    
+     return result[0] if result else None
     
     @staticmethod
     def count_user_behaviors(db, user_id):
