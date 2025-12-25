@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String baseUrl ='https://zero-trust-auth-production-097b.up.railway.app';
+  static const String baseUrl =
+      'https://zero-trust-auth-production-097b.up.railway.app';
 
   static const Duration apiTimeout = Duration(seconds: 30);
 

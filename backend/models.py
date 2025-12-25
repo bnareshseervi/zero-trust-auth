@@ -279,7 +279,12 @@ class BehaviorBaseline:
         query = "SELECT * FROM behavior_baselines WHERE user_id = %s;"
         result = db.execute(query, (user_id,), fetch=True)
         return result[0] if result else None
-
+    
+    @staticmethod
+    def get_by_id(db, user_id):
+       query = "SELECT id, email FROM users WHERE id = %s;"
+       result = db.execute(query, (user_id,), fetch=True)
+       return result[0] if result else None
 
 class RiskScore:
     """Risk score model"""

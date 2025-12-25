@@ -13,8 +13,6 @@ from models import (
     Database, User, Behavior,
     BehaviorBaseline, RiskScore, MLModel
 )
-from risk_calculator import RiskCalculator
-from ml_engine import MLEngine
 
 # =========================
 # APP INITIALIZATION
@@ -23,11 +21,13 @@ from ml_engine import MLEngine
 app = Flask(__name__)
 app.config.from_object(Config)
 
-CORS( app,
+CORS(
+    app,
     resources={r"/api/*": {"origins": "*"}},
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization"],
-    expose_headers=["Authorization"],)
+)
+
 jwt = JWTManager(app)
 
 # =========================
@@ -50,7 +50,7 @@ if getattr(Config, "REDIS_URL", None):
         print(f"⚠ Redis disabled: {e}")
 
 # =========================
-# HEALTH CHECKS (RAILWAY)
+# HEALTH CHECKS
 # =========================
 
 @app.route("/", methods=["GET"])
@@ -63,7 +63,7 @@ def health():
     }), 200
 
 # =========================
-# DATABASE SETUP (RUN ONCE)
+# DATABASE SETUP
 # =========================
 
 @app.route("/api/setup", methods=["POST"])
@@ -125,12 +125,39 @@ def login():
     token = create_access_token(identity=str(user["id"]))
 
     if redis_client:
-        redis_client.setex(f"session:{user['id']}", 86400, json.dumps({"email": email}))
+        redis_client.setex(
+            f"session:{user['id']}",
+            86400,
+            json.dumps({"email": email})
+        )
 
     return jsonify({
         "success": True,
         "token": token
     }), 200
+
+
+# ✅✅✅ MISSING ROUTE — THIS FIXES EVERYTHING
+@app.route("/api/auth/profile", methods=["GET"])
+@jwt_required()
+def profile():
+    user_id = get_jwt_identity()
+
+    user = User.get_by_id(db, user_id)
+    if not user:
+        return jsonify({
+            "success": False,
+            "error": "User not found"
+        }), 404
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "id": user["id"],
+            "email": user["email"]
+        }
+    }), 200
+
 
 # =========================
 # ERROR HANDLERS
@@ -145,7 +172,7 @@ def server_error(_):
     return jsonify({"success": False, "error": "Server error"}), 500
 
 # =========================
-# LOCAL RUN (RAILWAY IGNORES)
+# LOCAL RUN
 # =========================
 
 if __name__ == "__main__":
