@@ -26,9 +26,12 @@ class RiskScore {
             ? DateTime.parse(json['timestamp'])
             : DateTime.now(),
         deviations: json['deviations'] != null
-            ? Map<String, double>.from(json['deviations']
-                .map((key, value) => MapEntry(key, (value ?? 0).toDouble())))
-            : null,
+    ? (json['deviations'] as Map<String, dynamic>)
+        .map((key, value) => MapEntry(
+              key,
+              (value as num?)?.toDouble() ?? 0.0,
+            ))
+    : null,
       );
     } catch (e) {
       print('❌ Error parsing RiskScore: $e');
