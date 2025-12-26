@@ -6,7 +6,7 @@
 ![Splash Screen](screenshots/splash_screen.jpg)
 
 ### 🔐 Register Screen
-![Register Screen](screenshots/Register_page.jpg)
+![Register Screen](screenshots/register_page.jpg)
 
 ### 🔐 Login Screen
 ![Login Screen](screenshots/login_page.jpg)
