@@ -19,19 +19,19 @@ class RiskScore {
   factory RiskScore.fromJson(Map<String, dynamic> json) {
     try {
       return RiskScore(
-        score: (json['score'] ?? json['risk_score'] ?? 0).toDouble(),
+        score: ((json['score'] ?? json['risk_score'] ?? 0) as num).toDouble(),
         level: json['level'] ?? json['risk_level'] ?? 'UNKNOWN',
         action: json['action'] ?? json['action_taken'] ?? 'ALLOW',
         timestamp: json['timestamp'] != null
             ? DateTime.parse(json['timestamp'])
             : DateTime.now(),
         deviations: json['deviations'] != null
-    ? (json['deviations'] as Map<String, dynamic>)
-        .map((key, value) => MapEntry(
-              key,
-              (value as num?)?.toDouble() ?? 0.0,
-            ))
-    : null,
+            ? (json['deviations'] as Map<String, dynamic>)
+                .map((key, value) => MapEntry(
+                      key,
+                      (value as num?)?.toDouble() ?? 0.0,
+                    ))
+            : null,
       );
     } catch (e) {
       print('❌ Error parsing RiskScore: $e');
@@ -163,16 +163,18 @@ class BehaviorData {
 
   Map<String, dynamic> toJson() {
     return {
-      'typing_speed': typingSpeed,
-      'avg_tap_pressure': avgTapPressure ?? 0.75,
-      'location_lat': locationLat ?? 0.0,
-      'location_lng': locationLng ?? 0.0,
+      'typing_speed': typingSpeed.toDouble(),
+      'avg_tap_pressure': (avgTapPressure ?? 0.75).toDouble(),
+      'location_lat': (locationLat ?? 0.0).toDouble(),
+      'location_lng': (locationLng ?? 0.0).toDouble(),
       'device_model': deviceModel ?? 'Unknown',
       'device_os': deviceOs ?? 'Unknown',
-      'screen_width': screenWidth ?? 1080,
-      'screen_height': screenHeight ?? 2400,
-      'session_hour': sessionHour,
-      'session_duration': sessionDuration ?? 300,
+
+      // 👇 CRITICAL FIXES
+      'screen_width': (screenWidth ?? 1080).toDouble(),
+      'screen_height': (screenHeight ?? 2400).toDouble(),
+      'session_hour': sessionHour.toDouble(),
+      'session_duration': (sessionDuration ?? 300).toDouble(),
     };
   }
 }
