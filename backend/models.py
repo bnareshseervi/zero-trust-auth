@@ -355,7 +355,7 @@ class RiskScore:
         """
         result = db.execute(query, (
             user_id,
-            risk_data['risk_score'],
+            float(risk_data['risk_score']),
             risk_data['risk_level'],
             risk_data['action_taken'],
             risk_data.get('typing_deviation', 0),
