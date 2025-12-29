@@ -8,6 +8,27 @@ from config import Config
 from models import Database, User, Behavior, BehaviorBaseline, RiskScore, MLModel
 from risk_calculator import RiskCalculator
 
+# Add this after imports, before Flask initialization
+def ensure_float(value):
+    """Ensure value is float, not int"""
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return 0.0
+
+def clean_numeric_response(data):
+    """Convert all numeric values to float"""
+    if isinstance(data, dict):
+        return {k: clean_numeric_response(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [clean_numeric_response(item) for item in data]
+    elif isinstance(data, (int, float)):
+        return float(data)
+    else:
+        return data
+    
 # Initialize Flask
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -25,9 +46,7 @@ db = Database()
 # AUTO-INITIALIZE DATABASE ON STARTUP
 # ==========================================
 def initialize_database():
-    """Auto-create all database tables if they don't exist"""
-    
-    def initialize_database():     
+        """Auto-create all database tables if they don't exist"""    
         try:
             # Create users table
             db.execute("""
@@ -355,17 +374,17 @@ def calculate_risk():
             BehaviorBaseline.calculate_and_save(db, user_id)
         
         return jsonify({
-            "success": True,
-            "risk_score": risk_result['risk_score'],
-            "risk_level": risk_result['risk_level'],
-            "action": risk_result['action_taken'],
-            "deviations": {
-                "typing": risk_result['typing_deviation'],
-                "location": risk_result['location_deviation'],
-                "time": risk_result['time_deviation'],
-                "device": risk_result['device_deviation']
-            }
-        }), 200
+    "success": True,
+    "risk_score": float(risk_result['risk_score']),
+    "risk_level": risk_result['risk_level'],
+    "action": risk_result['action_taken'],
+    "deviations": {
+        "typing": float(risk_result['typing_deviation']),
+        "location": float(risk_result['location_deviation']),
+        "time": float(risk_result['time_deviation']),
+        "device": float(risk_result['device_deviation'])
+    }
+}), 200
         
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -449,7 +468,7 @@ def get_dashboard():
                     "member_since": str(user.get('created_at', ''))
                 },
                 "current_risk": {
-                    "score": latest_risk['risk_score'] if latest_risk else 0,
+                    "score": float(latest_risk['risk_score']) if latest_risk else 0,
                     "level": latest_risk['risk_level'] if latest_risk else "UNKNOWN",
                     "ml_score": latest_risk.get('ml_anomaly_score', 0) if latest_risk else 0,
                     "last_updated": str(latest_risk['timestamp']) if latest_risk else None

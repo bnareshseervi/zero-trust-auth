@@ -1,3 +1,4 @@
+from decimal import Decimal
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -37,6 +38,17 @@ class Database:
             print(f"❌ Database connection failed: {e}")
             raise
     
+    def _convert_decimals(self, data):
+        """Convert Decimal objects to float recursively"""
+        if isinstance(data, list):
+            return [self._convert_decimals(item) for item in data]
+        elif isinstance(data, dict):
+            return {key: self._convert_decimals(value) for key, value in data.items()}
+        elif isinstance(data, Decimal):
+            return float(data)
+        else:
+            return data
+    
     def execute(self, query, params=None, fetch=False):
         """Execute a database query"""
         # Lazy connection - connect when first query is executed
@@ -50,7 +62,8 @@ class Database:
             if fetch:
                 result = cursor.fetchall()
                 cursor.close()
-                return result
+                # ✅ Convert all Decimal to float
+                return self._convert_decimals(result)
             else:
                 self.connection.commit()
                 cursor.close()
@@ -261,13 +274,13 @@ class BehaviorBaseline:
             return None
         
         # Calculate averages (SIMPLIFIED - no mouse/app_switches)
-        avg_typing = sum(b['typing_speed'] for b in behaviors) / len(behaviors)
-        avg_hour = sum(b['session_hour'] for b in behaviors) / len(behaviors)
-        avg_lat = sum(b['location_lat'] for b in behaviors) / len(behaviors)
-        avg_lng = sum(b['location_lng'] for b in behaviors) / len(behaviors)
-        avg_screen_w = sum(b['screen_width'] for b in behaviors) / len(behaviors)
-        avg_screen_h = sum(b['screen_height'] for b in behaviors) / len(behaviors)
-        avg_duration = sum(b['session_duration'] for b in behaviors) / len(behaviors)
+        avg_typing =float( sum(b['typing_speed'] for b in behaviors) / len(behaviors))
+        avg_hour = float(sum(b['session_hour'] for b in behaviors) / len(behaviors))
+        avg_lat =float(sum(b['location_lat'] for b in behaviors) / len(behaviors))
+        avg_lng =float(sum(b['location_lng'] for b in behaviors) / len(behaviors))
+        avg_screen_w = float (sum(b['screen_width'] for b in behaviors) / len(behaviors))
+        avg_screen_h = float(sum(b['screen_height'] for b in behaviors) / len(behaviors))
+        avg_duration =float(sum(b['session_duration'] for b in behaviors) / len(behaviors))
         
         # Most common device/os
         devices = [b['device_model'] for b in behaviors]
