@@ -1,20 +1,5 @@
 # Zero-Trust Authentication with Behavioral Security Analysis
 
-## 📸 Screenshots
-
-### 🔐 splash Screen
-![Splash Screen](screenshots/splash_screen.jpg)
-
-### 🔐 Register Screen
-![Register Screen](screenshots/register_page.jpg)
-
-### 🔐 Login Screen
-![Login Screen](screenshots/login_page.jpg)
-
-### 📊 Dashboard
-![Dashboard](screenshots/dashboard.png)
-
-
 > A continuous authentication system that monitors user behavior in real-time and dynamically adjusts access based on risk scores, implementing zero-trust security principles.
 
 ## 📖 Overview
